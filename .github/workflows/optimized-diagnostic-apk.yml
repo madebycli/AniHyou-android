@@ -33,7 +33,7 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" --install 'platforms;android-37' 'build-tools;37.0.0'
+          "$SDKMANAGER" --install --channel=3 'platforms;android-37.0' 'build-tools;37.0.0'
 
       - name: Reuse checked-in release baseline and startup profiles
         shell: bash
