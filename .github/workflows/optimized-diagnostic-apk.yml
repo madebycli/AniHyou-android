@@ -1,0 +1,97 @@
+name: Optimized diagnostic FOSS APK
+
+on:
+  push:
+    branches:
+      - ci/optimized-diagnostic-apk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 37 build tools
+        run: sdkmanager --install 'platforms;android-37' 'build-tools;37.0.0'
+
+      - name: Reuse checked-in release baseline and startup profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          for profile in baseline-prof.txt startup-prof.txt; do
+            for source_variant in release fossRelease; do
+              case "$source_variant" in
+                release) dest_variant=diagnostic ;;
+                fossRelease) dest_variant=fossDiagnostic ;;
+              esac
+              source_file="app/src/$source_variant/generated/baselineProfiles/$profile"
+              if [[ -f "$source_file" ]]; then
+                mkdir -p "app/src/$dest_variant/generated/baselineProfiles"
+                cp "$source_file" "app/src/$dest_variant/generated/baselineProfiles/$profile"
+              fi
+            done
+          done
+
+      - name: Build optimized diagnostic APK with full Gradle logs
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleFossDiagnostic \
+            --no-daemon --stacktrace --info --console=plain \
+            -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8 -XX:+UseParallelGC' \
+            2>&1 | tee diagnostic-build.log
+
+      - name: Validate signature and stage universal APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/foss/diagnostic -maxdepth 1 -type f -name '*universal*.apk' -print -quit)"
+          if [[ -z "$apk" ]]; then
+            echo "Missing universal APK" >&2
+            find app/build/outputs/apk/foss/diagnostic -maxdepth 2 -type f || true
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$apk"
+          mkdir -p diagnostic-output
+          cp "$apk" diagnostic-output/AniHyou-foss-diagnostic-universal.apk
+          echo "Included baseline profile assets (if the plugin packaged them):"
+          unzip -Z1 "$apk" | grep '^assets/dexopt/baseline\.prof' || true
+          echo "Signed APK: diagnostic-output/AniHyou-foss-diagnostic-universal.apk"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniHyou-optimized-diagnostic-apk
+          path: diagnostic-output/AniHyou-foss-diagnostic-universal.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload full build log, R8 mapping, and APK metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniHyou-diagnostic-logs-and-mapping
+          path: |
+            diagnostic-build.log
+            app/build/outputs/mapping/fossDiagnostic/mapping.txt
+            app/build/outputs/apk/foss/diagnostic/output-metadata.json
+          if-no-files-found: warn
+          retention-days: 14

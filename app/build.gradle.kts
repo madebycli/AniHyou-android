@@ -79,6 +79,18 @@ android {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
         }
+        // Release-optimized APK with automatic, ephemeral Android debug signing.
+        // Keep non-debuggable to retain release-like runtime behavior and R8 optimizations.
+        create("diagnostic") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".diagnostic"
+            versionNameSuffix = "-DIAGNOSTIC"
+            isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
         create("benchmarkRelease") {
             matchingFallbacks += listOf("release")
         }
