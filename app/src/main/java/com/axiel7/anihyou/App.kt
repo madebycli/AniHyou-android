@@ -31,7 +31,10 @@ class App : Application(), SingletonImageLoader.Factory {
         super.onCreate()
 
         startKoin {
-            if (BuildConfig.DEBUG) {
+            if (BuildConfig.BUILD_TYPE == "diagnostic") {
+                // R8 keeps this logging path for optimized diagnostic APKs.
+                androidLogger(level = org.koin.core.logger.Level.DEBUG)
+            } else if (BuildConfig.DEBUG) {
                 androidLogger()
             }
             androidContext(this@App)
